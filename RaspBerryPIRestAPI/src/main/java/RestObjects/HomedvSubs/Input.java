@@ -4,6 +4,6 @@ package RestObjects.HomedvSubs;
  *
  * @author Rene
  */
-public class Inputs {
+public class Input {
     
 }

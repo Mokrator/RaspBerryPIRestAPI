@@ -4,7 +4,7 @@ package RestObjects.HomedvSubs;
  *
  * @author Rene
  */
-public class Relais {
-    public boolean ison;
+public class Meter {
+    public boolean power;
     // config auch speichern über automatische schaltungen / timer???
 }

@@ -9,8 +9,23 @@ import java.util.List;
  * @author Rene
  */
 public interface HomeDeviceInterface {
+    /***
+     * Reads config from device (add the addequate number of subdevices, read real hostname for ap-devices [or create one if by ip added new device has no hostname!] )
+     */
     public void ReadConfig();
+    
+    /***
+     * prepare a Request for this devicetype (with auth if needed)
+     * @param relUrl
+     * @return 
+     */
     public HttpRequest CreateRequest(String relUrl);
+    
+    /**
+     * Change device from AP to enter a prconfigured wifi... (hostname should be set to a name in order to find the device with its new ip later...)
+     */
+    public void UpdateNewDevice();
+
     /*
     public CamConfig GetCamConfig();
     public int GetSwitchCount();
@@ -38,6 +53,7 @@ public interface HomeDeviceInterface {
     public boolean SetRelais(int id, boolean on);
     public boolean SetLight(int id, Color color, byte brightness);
 */
+    
     public enum CamConfig {
         PhotoShot(1),
         HasVLCVideo(2),

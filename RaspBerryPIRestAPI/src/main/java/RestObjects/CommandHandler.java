@@ -3,6 +3,8 @@ package RestObjects;
 import Server.RestApiServer;
 import DataStorage.TableObject;
 import Bitsnbytes.Utils;
+import Homedv.Homedevice;
+import RestObjects.HomedvSubs.Dimmer;
 import java.security.MessageDigest;
 import java.sql.SQLException;
 import java.util.Calendar;
@@ -29,8 +31,21 @@ public class CommandHandler {
                     RestApiServer.BlockIP(remoteAddress, blockUntil);
                 }
                 else {
-                    HomedvShelly.AddKnownDevice(postData.getString("host"), postData.getString("login"), postData.getString("pwd"));
-                    HomedvTasmota.AddKnownDevice(postData.getString("host"), postData.getString("login"), postData.getString("pwd"));
+                    Homedevice newdev = HomedvShelly.AddKnownDevice(postData.getString("host"), postData.getString("login"), postData.getString("pwd"), RestApiServer.GetConnection());
+                    if (newdev.GetLastresponse() == null) {
+                        newdev = HomedvTasmota.AddKnownDevice(postData.getString("host"), postData.getString("login"), postData.getString("pwd"), RestApiServer.GetConnection());
+                    } // dont use else! repeatly check with individual if's for different types
+                    
+                    // after all types of devices checked
+                    if (newdev.GetLastresponse() == null) {
+                        returnValue.put("status", "devicenotfound");
+                    }
+                    else if (!newdev.GetNonDublicate()) {
+                        returnValue.put("status", "dublicate");
+                    }
+                    else {
+                        returnValue.put("status", "ok");
+                    }
                 }
             }
             /* regular Admin Commands*/
@@ -41,8 +56,21 @@ public class CommandHandler {
                     RestApiServer.BlockIP(remoteAddress, blockUntil);
                 }
                 else {
-                    HomedvShelly.SearchDevice();
-                    HomedvTasmota.SearchDevice();
+                    Homedevice newdev = HomedvShelly.SearchDevice(RestApiServer.GetConnection());
+                    if (newdev.GetLastresponse() == null) {
+                        newdev = HomedvTasmota.SearchDevice(RestApiServer.GetConnection());
+                    } // dont use else! repeatly check with individual if's for different types
+                    
+                    // after all types of devices checked
+                    if (newdev.GetLastresponse() == null) {
+                        returnValue.put("status", "nodevicefound");
+                    }
+                    else if (!newdev.GetNonDublicate()) {
+                        returnValue.put("status", "dublicate"); // altes Gerät nicht löschen sondern passwort vom alten gerät ins neue konfigurieren oder neues Passwort in db updaten beim alten Gerät?
+                    }
+                    else {
+                        returnValue.put("status", "ok");
+                    }
                 }
             }
             case "getlist" -> {

@@ -41,10 +41,13 @@ public class DatabaseForRest {
         // Tabellen prüfen un dvorbereiten
         Statement com = sqlCon.createStatement();
         com.execute("select name from sqlite_master where type='table' and name!='sqlite_sequence'");
-        boolean usersExists = false;
+        boolean usersExists = false, homedevicesExists = false;
         try (ResultSet res = com.getResultSet()) {
             while (res.next()) {
                 String tableName = res.getString(1);
+                if (tableName.equals("homedevices")) {
+                    homedevicesExists = true;
+                }
                 if (tableName.equals("users")) {
                     usersExists = true;
                 }
@@ -52,6 +55,9 @@ public class DatabaseForRest {
         }
         if (!usersExists) {
             com.execute("create table users (userid INTEGER PRIMARY KEY, login TEXT UNIQUE, salt TEXT, storedp TEXT, userstatus INTEGER, email TEXT, usercreated INTEGER, lastmailsent INTEGER, lastlogin INTEGER, lastuserupdate INTEGER)");
+        }
+        if (!homedevicesExists) {
+            com.execute("create table homedevices (homedeviceid INTEGER PRIMARY KEY, devicetype TEXT, hostname TEXT UNIQUE, username TEXT, password TEXT, devicecreated INTEGER, lastresponse INTEGER, lastdeviceupdate INTEGER, relaiscount INTEGER, metercount INTEGER, inputcount INTEGER, dimmercount INTEGER, cameracount INTEGER, rgbledcount INTEGER)");
         }
     }
    

@@ -1,29 +1,40 @@
 package RestObjects;
 
-import Homedv.HomeDevice;
+import Homedv.Homedevice;
 import Bitsnbytes.SqlParameter;
 import Bitsnbytes.Utils;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.sql.Connection;
+import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.Properties;
 
 /**
  *
  * @author Rene
  */
-public final class HomedvTasmota extends HomeDevice {
-    public static HomeDevice SearchDevice() {
-        return new HomedvTasmota("192.168.4.1", "admin", "", true);
+public final class HomedvTasmota extends Homedevice {
+
+    public static Homedevice SearchDevice(Connection sqlCon) throws SQLException {
+        return new HomedvTasmota("192.168.4.1", "admin", "", true, new Date(), null, new Date(), sqlCon);
     }
     
-    public HomedvTasmota(String hostname, String username, String password, boolean readConfig) {
-        SetData(hostname, username, password, 80);
-        if (readConfig) {
-            ReadConfig();
-        }
+    public static Homedevice AddKnownDevice(String hostname, String username, String password, Connection sqlCon) throws SQLException {
+        return new HomedvTasmota(hostname, username, password, true, new Date(), null, new Date(), sqlCon);
+    }
+
+    public HomedvTasmota(String hostname, String username, String password, boolean readConfig, Date devicecreated, Date lastresponse, Date lastdeviceupdate, Connection sqlCon) throws SQLException {
+        SetData("tasmota", hostname, username, password, 80, readConfig, devicecreated, lastresponse, lastdeviceupdate);
+        AddKnown(GetId(), sqlCon, "Homedevice", GetUniqueColumns(), new String[] { hostname }, known);
+    }
+    
+    @Override
+    public void UpdateNewDevice() {
+        
     }
     
     @Override
@@ -33,18 +44,13 @@ public final class HomedvTasmota extends HomeDevice {
         client.sendAsync(request, BodyHandlers.ofString()).thenApply(response -> {
             if (response.statusCode() == 200) {
                 if (response.body().startsWith("{t}{s}Voltage")) {
-                    
+                    SetLastresponse(new Date());
                 }
             }
             return response;
         });
     }
     
-    public static HomeDevice AddKnownDevice(String hostname, String username, String password) {
-        HomedvTasmota retValue = new HomedvTasmota(hostname, username, password, true);
-        return retValue;
-    }
-
     @Override
     public Properties GetClientData() {
         throw new UnsupportedOperationException("Not supported yet."); //To change body of generated methods, choose Tools | Templates.
