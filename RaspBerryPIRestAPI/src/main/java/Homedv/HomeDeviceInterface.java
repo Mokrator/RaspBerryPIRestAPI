@@ -8,7 +8,7 @@ import java.util.List;
  *
  * @author Rene
  */
-public interface HomeDeviceInterface {
+public interface HomedeviceInterface {
     /***
      * Reads config from device (add the addequate number of subdevices, read real hostname for ap-devices [or create one if by ip added new device has no hostname!] )
      */
