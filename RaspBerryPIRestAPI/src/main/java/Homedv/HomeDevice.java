@@ -5,31 +5,78 @@ import DataStorage.TableObject;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import RestObjects.HomedvSubs.Relais;
-import RestObjects.HomedvSubs.Inputs;
+import RestObjects.HomedvSubs.Meter;
+import RestObjects.HomedvSubs.Input;
 import RestObjects.HomedvSubs.Rgbled;
 import RestObjects.HomedvSubs.Dimmer;
+import java.util.Date;
 
 /**
  *
  * @author Rene
  */
-public abstract class HomeDevice extends TableObject implements HomeDeviceInterface {
+public abstract class Homedevice extends TableObject implements HomeDeviceInterface {
     public static final AbstractList<TableObject> known = new ArrayList<TableObject>();
     private AbstractList<Camera> cameraList;
-    private AbstractList<Relais> relaisList;
-    private AbstractList<Inputs> inputList;
-    private AbstractList<Rgbled> rgbledList;
-    private AbstractList<Dimmer> dimmerList;
+    public final AbstractList<Relais> relaisList = new ArrayList<Relais>();
+    public final AbstractList<Meter> meterList = new ArrayList<Meter>();
+    public final AbstractList<Input> inputList = new ArrayList<Input>();
+    public final AbstractList<Rgbled> rgbledList = new ArrayList<Rgbled>();
+    public final AbstractList<Dimmer> dimmerList = new ArrayList<Dimmer>();
     private int deviceid;
+    private String devicetype;
     private String hostname;
     private int apiport;
     private String username;
     private String password;
-    public void SetData(String hostname, String username, String password, int apiport) {
+    private Date devicecreated;
+    private Date lastresponse;
+    private Date lastdeviceupdate;
+    public void SetData(String devicetype,String hostname, String username, String password, int apiport, boolean readConfig, Date devicecreated, Date lastresponse, Date lastdeviceupdate) {
+        SetDevicetype(devicetype);
         SetHostname(hostname);
         SetApiport(apiport);
         SetUsername(username);
         SetPassword(password);
+        SetDevicecreated(devicecreated);
+        SetLastresponse(lastresponse);
+        SetLastdeviceupdate(lastdeviceupdate);
+        
+        if (readConfig) {
+            ReadConfig();
+        }
+        UpdateNewDevice();
+    }
+    public void SetDevicecreated(Date devicecreated) {
+        this.devicecreated = devicecreated;
+    }
+    public void SetLastresponse(Date lastresponse) {
+        this.lastresponse = lastresponse;
+    }
+    public Date GetLastresponse() {
+        return lastresponse;
+    }
+    public void SetLastdeviceupdate(Date lastdeviceupdate) {
+        this.lastdeviceupdate = lastdeviceupdate;
+    }
+    
+    public static String GetUniqueColumns() {
+        return "hostname=? COLLATE NOCASE";
+    };
+    
+    public void SetDevicetype(String devicetype) {
+        this.devicetype = devicetype;
+    }
+    public static void AddSubs(Homedevice myDevice, String type, int counter) {
+        for (int i = 0; i < counter; i++) {
+            switch (type) {
+                case "Relais" -> myDevice.relaisList.add(new Relais());
+                case "Meter" -> myDevice.meterList.add(new Meter());
+                case "Input" -> myDevice.inputList.add(new Input());
+                case "Rgbled" -> myDevice.rgbledList.add(new Rgbled());
+                case "Dimmer" -> myDevice.dimmerList.add(new Dimmer());
+            }
+        }
     }
     
     public void SetHostname (String hostname) {
