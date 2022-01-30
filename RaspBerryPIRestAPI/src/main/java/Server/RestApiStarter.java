@@ -22,8 +22,8 @@ public class RestApiStarter {
     {
         ConsoleHandler handler = new ConsoleHandler();
         RestApiServer.log.addHandler(handler);
-        handler.setLevel(Level.FINEST);
-        RestApiServer.log.setLevel(Level.FINEST);
+        handler.setLevel(Level.OFF);
+        RestApiServer.log.setLevel(Level.ALL);
         RestApiServer.Start();
     }
 }

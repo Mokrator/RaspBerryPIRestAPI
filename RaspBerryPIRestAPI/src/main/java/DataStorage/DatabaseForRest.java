@@ -2,6 +2,10 @@ package DataStorage;
 
 import Bitsnbytes.SqlParameter;
 import Bitsnbytes.SqlInformation;
+import Server.RestApiServer;
+import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -9,10 +13,13 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.AbstractList;
+import java.util.ArrayList;
 import java.util.Calendar;
 import java.util.Date;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.reflections.Reflections;
 /**
  *
  * @author Rene
@@ -36,37 +43,70 @@ public class DatabaseForRest {
      * 
      * @throws SQLException 
      */
-    private void PrepareRestApiDB() throws SQLException {
+    public DatabaseForRest(String workPath) throws SQLException {
+        sqlCon = DriverManager.getConnection("jdbc:sqlite:" + Path.of(workPath, "restapi.db").toString());
         sqlCon.setAutoCommit(true);
-        // Tabellen prüfen un dvorbereiten
-        Statement com = sqlCon.createStatement();
-        com.execute("select name from sqlite_master where type='table' and name!='sqlite_sequence'");
-        boolean usersExists = false, homedevicesExists = false;
-        try (ResultSet res = com.getResultSet()) {
+        // Tabellen prüfen und vorbereiten
+        AbstractList<TableVersioncontrol> tableVersions = new ArrayList<>();
+        Statement getexistingtables = sqlCon.createStatement();
+        getexistingtables.execute("select name from sqlite_master where type='table' and name!='sqlite_sequence'");
+        try (ResultSet res = getexistingtables.getResultSet()) {
             while (res.next()) {
-                String tableName = res.getString(1);
-                if (tableName.equals("homedevices")) {
-                    homedevicesExists = true;
-                }
-                if (tableName.equals("users")) {
-                    usersExists = true;
+                tableVersions.add(new TableVersioncontrol(res.getString(1), 1));
+            }
+        }
+        getexistingtables.close();
+        
+        if (TableVersioncontrol.GetVersioncontrol(tableVersions, "tableversions") == null) {
+            sqlCon.createStatement().execute("create table tableversions (tablename TEXT PRIMARY KEY COLLATE NOCASE, tableversion INT)");
+        }
+        else {
+            try (Statement getknowntables = sqlCon.createStatement()) {
+                getknowntables.execute("select * from tableversions");
+                try (ResultSet res = getknowntables.getResultSet()) {
+                    while (res.next()) {
+                        TableVersioncontrol.SetOrAddVersioncontrol(tableVersions, res.getString("tablename"), res.getInt("tableversion"));
+                    }
                 }
             }
         }
-        if (!usersExists) {
-            com.execute("create table users (userid INTEGER PRIMARY KEY, login TEXT UNIQUE, salt TEXT, storedp TEXT, userstatus INTEGER, email TEXT, usercreated INTEGER, lastmailsent INTEGER, lastlogin INTEGER, lastuserupdate INTEGER)");
-        }
-        if (!homedevicesExists) {
-            com.execute("create table homedevices (homedeviceid INTEGER PRIMARY KEY, devicetype TEXT, hostname TEXT UNIQUE, username TEXT, password TEXT, devicecreated INTEGER, lastresponse INTEGER, lastdeviceupdate INTEGER, relaiscount INTEGER, metercount INTEGER, inputcount INTEGER, dimmercount INTEGER, cameracount INTEGER, rgbledcount INTEGER)");
-        }
-    }
-   
-    public DatabaseForRest(String workPath) throws SQLException {
-        sqlCon = DriverManager.getConnection("jdbc:sqlite:" + Path.of(workPath, "restapi.db").toString());
-        PrepareRestApiDB();
+        
+        Reflections reflections = new Reflections("RestObjects");
+        RestApiServer.dbTableObjectClasses = reflections.getSubTypesOf(TableObject.class);
+        RestApiServer.allTableObjectClasses = reflections.getSubTypesOf(TableObject.class);
+        
+        RestApiServer.dbTableObjectClasses.forEach(o -> {
+            boolean found = false;
+            for (Field f : o.getDeclaredFields()) {
+                if (f.getName().equals("known")) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                RestApiServer.allTableObjectClasses.remove(o);
+            }
+        });
+        
+        RestApiServer.dbTableObjectClasses.forEach(o -> {
+            
+            if (o.getSuperclass().getSimpleName().equals("TableObject")) {
+                TableVersioncontrol tableVersioncontrol = TableVersioncontrol.SetOrAddVersioncontrol(tableVersions, o.getSimpleName() + "s", 0);
+                try {
+                    Method method = o.getMethod("SQLPrepare", int.class, Connection.class);
+                    method.invoke(null, tableVersioncontrol.tableVersion, sqlCon);
+                } catch (NoSuchMethodException ex) {
+                    RestApiServer.log.log(Level.SEVERE, "{0} has no method!", o.getCanonicalName());
+                } catch (IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
+                    if (!o.getSimpleName().equals("HomedvTasmota") && !o.getSimpleName().equals("HomedvShelly")) {
+                        RestApiServer.log.log(Level.SEVERE, ex.getMessage());
+                    }
+                }
+            }
+        });
     }
     
-    public void stop() {
+    public void Stop() {
         try {
             if (!sqlCon.getAutoCommit())
             {

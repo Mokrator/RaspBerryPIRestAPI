@@ -44,9 +44,9 @@ import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.apache.commons.io.FileUtils;
-import RestObjects.User;
-import RestObjects.UserSession;
 import com.sun.net.httpserver.HttpServer;
+import java.lang.reflect.InvocationTargetException;
+import java.util.Set;
 
 /**
  *
@@ -54,11 +54,14 @@ import com.sun.net.httpserver.HttpServer;
  */
 public final class RestApiServer {
     public static final Logger log = Logger.getAnonymousLogger();
+    public static Set<Class<? extends TableObject>> dbTableObjectClasses;
+    public static Set<Class<? extends TableObject>> allTableObjectClasses;
     public static final int SESSIONTIMEOUT = 46;
     
     private static final int SSLPORT = 3674;
     private static final int HOMEPORT = 88;
     private static final boolean GETINPUTFROMHOMEBYHTTPS = false;
+    private static final boolean RUNALLSERVICEHTTP = false;
     private static final String HOMEURL = "/activity/";
     private static final String BASEURL = "/";
     private static final String RESTURL = "/rest/";
@@ -85,7 +88,6 @@ public final class RestApiServer {
     /**
      * On Objectchanges edit following methods:
      * TableObject.CreateFromRes (only for NEW tables)
-     * RestApiServer.CleanupCache (only for NEW tables)
      * RestApiServer.SaveDatabase (only for NEW tables)
      * XTableX.CreateFromRes (any changes to datastructure)
      * XTableX.GetChangesSQL (any changes to datastructure)
@@ -95,39 +97,71 @@ public final class RestApiServer {
      * XTableX.GetAdminData (for new Outputs)
      * DatabaseForRest.PrepareRestApiDB (remember to change the existing tables or build in versioncheck if you change columns)
      */
-    private static void CleanupCache() {
+    private static void CleanupCache() throws NoSuchFieldException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
         Date deleteBefore = new Date();
         deleteBefore.setTime(deleteBefore.getTime() - 1000*PURGEUNUSEDOBJECTAFTER);
-        User.CleanupCache(deleteBefore, User.known);
-        UserSession.CleanupCache(deleteBefore, UserSession.known);
+        for (Class<? extends TableObject> o : RestApiServer.allTableObjectClasses) {
+            try {
+                o.getMethod("CleanupCache", Date.class, AbstractList.class).invoke(null, deleteBefore, (AbstractList<TableObject>)o.getField("known").get(null));
+            } catch (NoSuchMethodException | SecurityException ex) {
+                log.severe(TableObject.class.getName() + " " +  ex.getMessage());
+            }
+        }
     }
-    private static void SaveDatabase() throws SQLException {
-        SaveKnown(User.known);
-        SetNextDbSave();
+    private static boolean SaveDatabase() {
+        int errCount = 0;
+        boolean success = false;
+        while (!success && errCount < 15) {
+            try {
+                for (Class<? extends TableObject> o : RestApiServer.allTableObjectClasses) {
+                    SaveKnown((AbstractList<TableObject>)o.getField("known").get(null));
+                }
+                SetNextDbSave();
+                success = true;
+            } catch (SQLException | NoSuchFieldException | IllegalAccessException ex) {
+                log.severe(ex.getMessage());
+                errCount = 15;
+            } catch(java.util.ConcurrentModificationException ex) {
+                log.warning("java.util.ConcurrentModificationException while SAVING!");
+                errCount++;
+                if (errCount < 15) {
+                    subsleep(200);
+                }
+                else {
+                    log.severe("FINAL java.util.ConcurrentModificationException while SAVING!");
+                }
+            }
+        }
+        return success;
     }
     
+    private static void SaveKnown(AbstractList<TableObject> known) throws SQLException {
+        for (TableObject o : known) {
+            if (o.GetNeedInsert() || o.GetNeedUpdate()) {
+                SqlInformation sqlInformation = new SqlInformation();
+                AppendCom(sqlInformation, o);
+                myRestDB.RunSaveCommands(sqlInformation);
+            }
+        }
+    }
+    public static boolean IsTimerActive() {return timerActivity; }
     private static final TimerTask timerTask = new TimerTask() {
         @Override
         public void run() {
+            timerActivity = true;
             if (startShutdown) try {
                 startShutdown = false;
                 StopSocketService();
+                timerActivity = false;
+                return;
             }
-            catch (InterruptedException | SQLException ex) {
-                Logger.getLogger(RestApiServer.class.getName()).log(Level.SEVERE, null, ex);
+            catch (InterruptedException | SQLException | NoSuchFieldException | IllegalAccessException ex) {
+                log.severe(ex.getMessage());
             }
             if (serviceIsStopping) return;
             Date now = new Date();
             if (nextDbSave.before(now)) {
-                timerActivity = true;
-                try {
-                    SaveDatabase();
-                } catch (SQLException ex) {
-                    log.severe(ex.getMessage());
-                }
-                catch(java.util.ConcurrentModificationException ex) {
-                    log.severe("java.util.ConcurrentModificationException while SAVING!");
-                }
+                SaveDatabase();
             }
             else if (nextCheckCache.before(now)) {
                 try {
@@ -139,22 +173,13 @@ public final class RestApiServer {
                 }
                 catch(java.util.ConcurrentModificationException ex) {
                     log.severe("java.util.ConcurrentModificationException while CLEANUP");
+                } catch (NoSuchFieldException | IllegalAccessException | IllegalArgumentException | InvocationTargetException ex) {
+                    log.severe(ex.getMessage());
                 }
             }
             timerActivity = false;
         }
     };
-    
-    private static void SaveKnown(AbstractList<TableObject> known) throws SQLException {
-        for (TableObject o : known) {
-            if (o.GetNeedInsert() || o.GetNeedUpdate()) {
-                SqlInformation sqlInformation = new SqlInformation();
-                AppendCom(sqlInformation, o);
-                myRestDB.RunSaveCommands(sqlInformation);
-            }
-        }
-    }
-    
 
     public static void AppendCom(SqlInformation sqlInformation, TableObject tableObject) {
         sqlInformation.sql += tableObject.GetChangesSQL(sqlInformation.parameters) + "\r\n";
@@ -197,7 +222,7 @@ public final class RestApiServer {
             localFolder = BASEURL.replaceAll("[^"+ALLOWURLCHARS+"]", "");
         }
         String lineBreak = "\n";
-        log.log(Level.WARNING, String.format("Information:" + lineBreak + "Working directory is %s !" + lineBreak + "Webroot directory for html files is %s !" + lineBreak + "Store the passwort to the keystore base64encoded as UTF-8 file in the working-directory named https.pkcs12.pwd !\n" + "Store the pkcs12 encoded binary file ssh-private key in the working-directory named https.pkcs12 !" + lineBreak + lineBreak, workPath, localFolder));
+        log.warning(String.format("Information:" + lineBreak + "Working directory is "+workPath+" !" + lineBreak + "Webroot directory for html files is "+localFolder+" !" + lineBreak + "Store the passwort to the keystore base64encoded as UTF-8 file in the working-directory named https.pkcs12.pwd !\n" + "Store the pkcs12 encoded binary file ssh-private key in the working-directory named https.pkcs12 !" + lineBreak + lineBreak));
         httpsServer = HttpsServer.create(new InetSocketAddress(SSLPORT), 0);
         httpServer = HttpServer.create(new InetSocketAddress(HOMEPORT), 0);
         File pwdfile = Path.of(workPath, "https.pkcs12.pwd").toFile();
@@ -251,20 +276,37 @@ public final class RestApiServer {
                 }
             }
         });
+        
+        httpServer.setExecutor(Executors.newCachedThreadPool()); // creates a default executor for multithreaded server
+        httpsServer.setExecutor(Executors.newCachedThreadPool()); // creates a default executor for multithreaded server
+        
         HttpHandlerActivity httpHandlerHome = new HttpHandlerActivity();
-        httpServer.createContext(HOMEURL, (HttpHandler)httpHandlerHome);
+        HttpHandlerRest handleRest = new HttpHandlerRest();
+        HttpHandlerNonRest handleNonRest = new HttpHandlerNonRest(BASEURL, localFolder, ALLOWURLCHARS);
+        
+        httpsServer.createContext(RESTURL, (HttpHandler)handleRest);
+        
+        if (RUNALLSERVICEHTTP) {
+            httpServer.createContext(RESTURL, (HttpHandler)handleRest);
+            httpServer.createContext(BASEURL, (HttpHandler)handleNonRest);
+            if (!"/".equals(BASEURL)){
+                httpServer.createContext("/favicon.ico", (HttpHandler)handleNonRest);
+            }
+        }
+        else {
+            httpsServer.createContext(RESTURL, (HttpHandler)handleRest);
+            httpsServer.createContext(BASEURL, (HttpHandler)handleNonRest);
+            if (!"/".equals(BASEURL)){
+                httpsServer.createContext("/favicon.ico", (HttpHandler)handleNonRest);
+            }
+        }
         if (GETINPUTFROMHOMEBYHTTPS) {
             httpsServer.createContext(HOMEURL, (HttpHandler)httpHandlerHome);
         }
-        
-        HttpHandlerRest handleRest = new HttpHandlerRest();
-        HttpHandlerNonRest handleNonRest = new HttpHandlerNonRest(BASEURL, localFolder, ALLOWURLCHARS);
-        httpsServer.createContext(RESTURL, (HttpHandler)handleRest);
-        if (!"/".equals(BASEURL)){
-            httpsServer.createContext("/favicon.ico", (HttpHandler)handleNonRest);
+        else {
+            httpServer.createContext(HOMEURL, (HttpHandler)httpHandlerHome);
         }
-        httpsServer.createContext(BASEURL, (HttpHandler)handleNonRest);
-        httpsServer.setExecutor(Executors.newCachedThreadPool()); // creates a default executor for multithreaded server
+        httpServer.start();
         httpsServer.start();
     }
 
@@ -288,23 +330,23 @@ public final class RestApiServer {
         if (!serviceIsStopping) startShutdown = true;
     }
     
-    public static void StopSocketService() throws InterruptedException, SQLException {
+    public static void StopSocketService() throws InterruptedException, SQLException, NoSuchFieldException, IllegalAccessException {
         serviceIsStopping = true;
-        try {
-            SaveDatabase();
-        } catch (SQLException ex) {
-            serviceIsStopping = false;
-            throw(ex);
-        }
         checkTimer.cancel();
-        httpsServer.stop(3);
-        for (int i = 0; timerActivity && i < 10; i++) {
-            subsleep();
+        if (!SaveDatabase()) {
+            log.severe("Database not Saved!");
         }
-        myRestDB.stop();
+        httpServer.stop(1);
+        httpsServer.stop(3);
+        myRestDB.Stop();
     }
-    public static void subsleep() throws InterruptedException {
-        Thread.sleep(200);
+    
+    public static void subsleep(int ms) {
+        try {
+            Thread.sleep(ms);
+        } catch (InterruptedException ex) {
+            log.severe(RestApiServer.class.getName() + " " + ex.getMessage());
+        }
     }
     
     public static String GetWorkPath() {
@@ -322,7 +364,9 @@ public final class RestApiServer {
             configPath = System.getenv(myPath);
             if (configPath != null) break;
         }
-        if (configPath == null) throw new FileNotFoundException("BasePath for the settings-directory not found, check the enviroment-variable HOME (Linux) or APPDATA (Windows).");
+        if (configPath == null) {
+            throw new FileNotFoundException("BasePath for the settings-directory not found, check the enviroment-variable HOME (Linux) or APPDATA (Windows).");
+        }
         if (!Path.of(configPath, appName).toFile().exists()) {
             Path.of(configPath, appName).toFile().mkdir();
         }

@@ -21,6 +21,7 @@ import java.util.logging.Logger;
 import org.json.JSONException;
 import RestObjects.CommandHandler;
 import RestObjects.UserSession;
+import java.lang.reflect.InvocationTargetException;
 
 /**
  *
@@ -40,19 +41,16 @@ public class HttpHandlerRest implements HttpHandler {
                     
             
             String remoteAddress = exchange.getRemoteAddress().getHostString();
-            if (!RestApiServer.CheckIP(remoteAddress)) {
+            if (!exchange.getRequestMethod().equals("POST")) {  // wrong method
+                RestApiServer.ErrorOutput(exchange, responseHeaders, 405);
+            }
+            else if (!RestApiServer.CheckIP(remoteAddress)) {
                 RestApiServer.log.log(Level.INFO, "retry from blocked in RestHandler {0}", exchange.getRequestURI());
                 try (OutputStream w = exchange.getResponseBody()) {
                     byte[] output = ("{\"updatetime\":" + Calendar.getInstance().getTimeInMillis() + ",\"status\":\"ok\"}").getBytes("utf-8");
                     exchange.sendResponseHeaders(200, output.length);
                     w.write(output);
                 }
-            }
-            else if (!exchange.getRequestMethod().equals("POST")) {  // wrong method
-                blockUntil.add(Calendar.MINUTE, 15);
-                RestApiServer.BlockIP(remoteAddress, blockUntil);
-                RestApiServer.log.log(Level.SEVERE, "Blocked IP in RestHandler for nonpost {0}", exchange.getRequestURI());
-                RestApiServer.ErrorOutput(exchange, responseHeaders, 405);
             }
             else if (!CheckContentTypeIsJson(exchange)) {       // wrong header for type of data
                 blockUntil.add(Calendar.MINUTE, 15);
@@ -93,7 +91,7 @@ public class HttpHandlerRest implements HttpHandler {
                      * catch jsonerrors: nonexistent Keys or not readable data from postData will result in malformedpostdata error
                      */
                     JSONObject postData = new JSONObject(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-                    if (postData.getBigInteger("lastupdate").longValue() != userSession.GetLastUpdate().getTimeInMillis()) {
+                    if (postData.getBigInteger("updatetime").longValue() != userSession.GetLastUpdate().getTimeInMillis()) {
                         RestApiServer.log.log(Level.WARNING, "lastupdatewrong Session {0}", sessionid);
                         userSession.LogOut("lastupdatewrong");
                         returnValue.put("status", "lastupdatewrong");
@@ -123,6 +121,8 @@ public class HttpHandlerRest implements HttpHandler {
                 } catch (SQLException ex) {
                     returnValue.put("status", "dberror");
                     RestApiServer.log.log(Level.SEVERE, null, ex);
+                } catch (IllegalArgumentException | IllegalAccessException | InvocationTargetException ex) {
+                    Logger.getLogger(HttpHandlerRest.class.getName()).log(Level.SEVERE, null, ex);
                 }
                 // returnValue ready for output, send http 200 and returnValue as json-body
                 try (OutputStream w = exchange.getResponseBody()) {

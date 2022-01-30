@@ -1,10 +1,10 @@
-package RestObjects.HomedvSubs;
+package HomeSubDv;
 
 /**
  *
  * @author Rene
  */
-public class Meter {
+public class SubDvMeter {
     public boolean power;
     // config auch speichern über automatische schaltungen / timer???
 }

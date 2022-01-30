@@ -7,9 +7,10 @@ import Bitsnbytes.Utils;
 import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Statement;
 import java.util.AbstractList;
 import java.util.ArrayList;
-import java.util.Date;
+import java.util.Calendar;
 import java.util.Properties;
 
 /**
@@ -19,27 +20,47 @@ import java.util.Properties;
 public class User extends TableObject {
     public static final AbstractList<TableObject> known = new ArrayList<TableObject>();
     public int userid;
-    public Date usercreated;
-    public Date lastuserupdate;
-    public Date lastlogin;
-    public Date lastmailsent;
+    public Calendar usercreated;
+    public Calendar lastuserupdate;
+    public Calendar lastlogin;
+    public Calendar lastmailsent;
     public String email;
     public String login;
     public String salt;
     public String storedp;
     /**
-     *   1: Active
-     *   2: Mail not sent
-     *   4: Mail not confirmed
-     *   8: needChangePW
-     *  16: 
-     *  32: Admin (Devices)
-     *  64: Admin (Users)
-     * 128: Admin (Service+SQLMaster)
+     *    1: Active
+     *    2: Mail not sent
+     *    4: Mail not confirmed
+     *    8: needChangePW
+     *   16: 
+     *   32: Admin (Devices)
+     *   64: Admin (Users)
+     *  128: Admin (Service+SQLMaster)
+     *  512:
+     * 1024: Admin CouponDB
+
      */
     public int userstatus;
+
+    private static final int CURRENT_TABLE_VERSION = 1;
+    public static int SQLPrepare(int isversion, Connection sqlCon) throws SQLException {
+        Statement updateCom = sqlCon.createStatement();
+        if (isversion == 0) {
+            updateCom.execute("create table " + User.class.getSimpleName().toLowerCase() + "s (userid INTEGER PRIMARY KEY, login TEXT UNIQUE, salt TEXT, storedp TEXT, userstatus INTEGER, email TEXT, usercreated INTEGER, lastmailsent INTEGER, lastlogin INTEGER, lastuserupdate INTEGER)");
+            isversion++;
+        }
+        else while (isversion < CURRENT_TABLE_VERSION) {
+            if (isversion == 1) {
+                updateCom.execute("alter table users ");
+            }
+            isversion++;
+        }
+        return isversion;
+    }
+
     
-    public User(int userid, Date usercreated, Date lastuserupdate, Date lastlogin, Date lastmailsent, String email, String login, String salt, String storedp, int userstatus, Connection sqlCon) throws SQLException {
+    public User(int userid, Calendar usercreated, Calendar lastuserupdate, Calendar lastlogin, Calendar lastmailsent, String email, String login, String salt, String storedp, int userstatus, Connection sqlCon) throws SQLException {
         this.userid=userid;
         this.usercreated=usercreated;
         this.lastuserupdate=lastuserupdate;
@@ -56,7 +77,7 @@ public class User extends TableObject {
     public static String GetUniqueColumns() {
         return "login=? COLLATE NOCASE";
     };
-
+    
     @Override
     public boolean CheckIsSame(String[] uniquevals) {
         return uniquevals[0].toLowerCase().equals(login.toLowerCase());
@@ -75,19 +96,19 @@ public class User extends TableObject {
         String storedp = res.getString(4);
         int userstatus = res.getInt(5);
         String email = res.getString(6);
-        Date usercreated = Utils.SetDate(res.getLong(7));
-        Date lastmailsent = Utils.SetDate(res.getLong(8));
-        Date lastlogin = Utils.SetDate(res.getLong(9));
-        Date lastuserupdate = Utils.SetDate(res.getLong(10));
+        Calendar usercreated = Utils.CalendarFromLong(res.getLong(7));
+        Calendar lastmailsent = Utils.CalendarFromLong(res.getLong(8));
+        Calendar lastlogin = Utils.CalendarFromLong(res.getLong(9));
+        Calendar lastuserupdate = Utils.CalendarFromLong(res.getLong(10));
         return new User(userid, usercreated, lastuserupdate, lastlogin, lastmailsent, email, login, salt, storedp, userstatus, null);
     }
     
     @Override
     public String GetChangesSQL(ArrayList<SqlParameter> parameters) {
-        parameters.add(new SqlParameter(SqlParameter.ParType.Date, usercreated));
-        parameters.add(new SqlParameter(SqlParameter.ParType.Date, lastuserupdate));
-        parameters.add(new SqlParameter(SqlParameter.ParType.Date, lastlogin));
-        parameters.add(new SqlParameter(SqlParameter.ParType.Date, lastmailsent));
+        parameters.add(new SqlParameter(SqlParameter.ParType.Calendar, usercreated));
+        parameters.add(new SqlParameter(SqlParameter.ParType.Calendar, lastuserupdate));
+        parameters.add(new SqlParameter(SqlParameter.ParType.Calendar, lastlogin));
+        parameters.add(new SqlParameter(SqlParameter.ParType.Calendar, lastmailsent));
         parameters.add(new SqlParameter(SqlParameter.ParType.String, email));
         parameters.add(new SqlParameter(SqlParameter.ParType.String, login));
         parameters.add(new SqlParameter(SqlParameter.ParType.String, salt));

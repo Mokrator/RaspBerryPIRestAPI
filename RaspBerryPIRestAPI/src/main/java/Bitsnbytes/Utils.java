@@ -3,6 +3,7 @@ package Bitsnbytes;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.Base64;
+import java.util.Calendar;
 import java.util.Date;
 
 /**
@@ -38,10 +39,20 @@ public class Utils {
         return BytesToHex(digest.digest(input.getBytes(StandardCharsets.UTF_8)));
     }
     
-    public static Date SetDate(long in) {
+    public static Date DateFromLong(long in) {
         Date out = new Date();
         if (in > 0) {
             out.setTime(in);
+        } else {
+            out = null;
+        }
+        return out;
+    }
+    
+    public static Calendar CalendarFromLong(long in) {
+        Calendar out = Calendar.getInstance();
+        if (in > 0) {
+            out.setTime(DateFromLong(in));
         } else {
             out = null;
         }

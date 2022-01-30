@@ -3,8 +3,7 @@ package RestObjects;
 import Server.RestApiServer;
 import DataStorage.TableObject;
 import Bitsnbytes.Utils;
-import Homedv.Homedevice;
-import RestObjects.HomedvSubs.Dimmer;
+import java.lang.reflect.InvocationTargetException;
 import java.security.MessageDigest;
 import java.sql.SQLException;
 import java.util.Calendar;
@@ -17,7 +16,7 @@ import org.json.JSONObject;
  * @author Rene
  */
 public class CommandHandler {
-    public static void HandleCom(String path, UserSession userSession, JSONObject postData, Properties returnValue, Calendar blockUntil, String remoteAddress, MessageDigest digest) throws SQLException {
+    public static void HandleCom(String path, UserSession userSession, JSONObject postData, Properties returnValue, Calendar blockUntil, String remoteAddress, MessageDigest digest) throws SQLException, IllegalArgumentException, IllegalAccessException, InvocationTargetException {
         switch (path) {
             /* Ping - might be used quite often */
             case "ping" -> returnValue.put("status", "ok");
@@ -56,21 +55,13 @@ public class CommandHandler {
                     RestApiServer.BlockIP(remoteAddress, blockUntil);
                 }
                 else {
-                    Homedevice newdev = HomedvShelly.SearchDevice(RestApiServer.GetConnection());
-                    if (newdev.GetLastresponse() == null) {
-                        newdev = HomedvTasmota.SearchDevice(RestApiServer.GetConnection());
-                    } // dont use else! repeatly check with individual if's for different types
-                    
-                    // after all types of devices checked
-                    if (newdev.GetLastresponse() == null) {
-                        returnValue.put("status", "nodevicefound");
-                    }
-                    else if (!newdev.GetNonDublicate()) {
-                        returnValue.put("status", "dublicate"); // altes Gerät nicht löschen sondern passwort vom alten gerät ins neue konfigurieren oder neues Passwort in db updaten beim alten Gerät?
-                    }
-                    else {
-                        returnValue.put("status", "ok");
-                    }
+                    // Start Searchrequests on all known Devicetypes
+                
+                    Calendar x = Calendar.getInstance();
+                    Date D = x.getTime();
+                    HomedvShelly.SearchDevice(RestApiServer.GetConnection());
+                    HomedvTasmota.SearchDevice(RestApiServer.GetConnection());
+                    returnValue.put("status", "ok");
                 }
             }
             case "getlist" -> {
@@ -88,6 +79,10 @@ public class CommandHandler {
                                 User.ReadAllObjects(RestApiServer.GetConnection(), postData.getString("type"), User.known);
                             }
                             returnValue.put(postData.getString("type"), User.GetAdminObjects(User.known));
+                            returnValue.put("status", "ok");
+                        }
+                        case "Homedevice" -> {
+                            returnValue.put(postData.getString("type"), Homedevice.GetAdminObjects(Homedevice.known));
                             returnValue.put("status", "ok");
                         }
                         case "UserSession" -> {
@@ -115,7 +110,7 @@ public class CommandHandler {
                 else {
                     String getsaltTempLogin = postData.getString("login").toLowerCase();
                     TableObject GG = User.GetUniqueObject(RestApiServer.GetConnection(), "User", User.GetUniqueColumns(), new String[] { postData.getString("login") }, User.known);
-                    if (GG == null) {
+                    if (GG == null || ((User)GG).userstatus == 0) {
                         userSession.SetLoginEntry(null);
                     } else {
                         userSession.SetLoginEntry((User)GG);
@@ -136,7 +131,7 @@ public class CommandHandler {
                 if (userSession.GetLoginEntry() != null && postData.has("pass") && postData.getString("pass").length() == 64 && Utils.Sha256(userSession.GetSessionId() + userSession.GetLoginEntry().storedp, digest).equals(postData.getString("pass"))) {
                     userSession.LoginSuccess();
                     User u = userSession.GetUserEntry();
-                    u.lastlogin = new Date();
+                    u.lastlogin = Calendar.getInstance();
                     returnValue.put("hello", JSONObject.valueToString(u.GetClientData()));
                     returnValue.put("status", "ok");
                     userSession.GetUser().lastUsed = userSession.lastUsed;
@@ -166,7 +161,7 @@ public class CommandHandler {
                 else {
                     String registerTempSalt = Utils.Sha256(String.valueOf(Math.random()), digest);
                     User newUser;
-                    newUser = new User(-1, new Date(), new Date(), null, null, postData.getString("email"), postData.getString("login"), registerTempSalt, Utils.Sha256(registerTempSalt + postData.getString("storedp"), digest), 3, RestApiServer.GetConnection());
+                    newUser = new User(-1, Calendar.getInstance(), Calendar.getInstance(), null, null, postData.getString("email"), postData.getString("login"), registerTempSalt, Utils.Sha256(registerTempSalt + postData.getString("storedp"), digest), 3, RestApiServer.GetConnection());
                     if (newUser.GetNonDublicate()) {
                         returnValue.put("status", "ok");
                     }

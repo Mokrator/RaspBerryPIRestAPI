@@ -3,6 +3,7 @@ package RestObjects;
 import Server.RestApiServer;
 import DataStorage.TableObject;
 import Bitsnbytes.SqlParameter;
+import java.sql.Connection;
 import java.text.DateFormat;
 import java.util.AbstractList;
 import java.util.ArrayList;
@@ -28,6 +29,11 @@ public class UserSession extends TableObject {
     private final Calendar sessioncreated;
     private String logoutreason = null;
     
+    public static void SQLPrepare(int isversion, Connection sqlCon) {
+        // Sessions are not stored in the Database...
+        // (Save writeamount to the ssd)
+    }
+ 
     public UserSession(String remoteAddress, String sessionid, Calendar updatetime) {
         this.remoteAddress = remoteAddress;
         this.sessionid = sessionid;

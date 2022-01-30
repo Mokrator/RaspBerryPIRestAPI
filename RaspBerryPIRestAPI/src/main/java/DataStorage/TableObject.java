@@ -7,7 +7,10 @@ import java.sql.SQLException;
 import java.util.AbstractList;
 import java.util.Date;
 import org.json.JSONArray;
-import RestObjects.User;
+import Server.RestApiServer;
+import java.lang.reflect.InvocationTargetException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 /**
  *
@@ -22,25 +25,27 @@ public abstract class TableObject implements TableObjectInterface {
     
     /**
      * On Objectchanges edit following methods:
-     * TableObject.CreateFromRes (only for NEW tables)
-     * RestApiServer.CleanupCache (only for NEW tables)
-     * RestApiServer.SaveDatabase (only for NEW tables)
      * XTableX.CreateFromRes (any changes to datastructure)
      * XTableX.GetChangesSQL (any changes to datastructure)
      * XTableX.GetUniqueColumns (if the unique-keys are changed)
      * XTableX.CheckIsSame (if the unique-keys are changed)
      * XTableX.GetClientData (for new Outputs)
      * XTableX.GetAdminData (for new Outputs)
-     * DatabaseForRest.PrepareRestApiDB (remember to change the existing tables or build in versioncheck if you change columns)
      * 
      * @param objectType as the clasname is written...
      * @param res
      * @return 
      */
-    private static TableObject CreateFromRes(String objectType, ResultSet res) throws SQLException {
-        switch (objectType) {
-            case "User" -> {
-                return User.CreateFromRes(res);
+    private static TableObject CreateFromRes(String objectType, ResultSet res) throws SQLException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
+        
+        for (Class<? extends TableObject> o : RestApiServer.dbTableObjectClasses) {
+            if (o.getSimpleName().equals(objectType)) {
+                try {
+                    return (TableObject)o.getMethod("CreateFromRes", ResultSet.class).invoke(null, res);
+                } catch (NoSuchMethodException | SecurityException ex) {
+                    Logger.getLogger(TableObject.class.getName()).log(Level.SEVERE, null, ex);
+                }
+                break;
             }
         }
         return null;
@@ -63,7 +68,7 @@ public abstract class TableObject implements TableObjectInterface {
         needUpdate = false;
     }
     
-    private static TableObject CreateFromCom(String objectType, PreparedStatement com) throws SQLException {
+    private static TableObject CreateFromCom(String objectType, PreparedStatement com) throws SQLException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
         com.execute();
         try (ResultSet res = com.getResultSet()) {
             if (res.next()) {
@@ -74,12 +79,12 @@ public abstract class TableObject implements TableObjectInterface {
     }
 
     
-    public static void ReadAllObjects(Connection sqlCon, String objectType, AbstractList<TableObject> known) throws SQLException {
+    public static void ReadAllObjects(Connection sqlCon, String objectType, AbstractList<TableObject> known) throws SQLException, IllegalArgumentException, IllegalAccessException, InvocationTargetException {
         PreparedStatement com = sqlCon.prepareStatement("select * from " + objectType.toLowerCase() + "s;", java.sql. ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY);
         CreateAllFromCom(objectType, com, known);
     }
 
-    private static void CreateAllFromCom(String objectType, PreparedStatement com, AbstractList<TableObject> known) throws SQLException {
+    private static void CreateAllFromCom(String objectType, PreparedStatement com, AbstractList<TableObject> known) throws SQLException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
         com.execute();
         try (ResultSet res = com.getResultSet()) {
             while (res.next()) {
@@ -94,7 +99,7 @@ public abstract class TableObject implements TableObjectInterface {
         return known.stream().anyMatch(o -> (o.GetId() == id));        
     }
     
-    public static TableObject GetObjectById(Connection sqlCon, String objectType, int id, AbstractList<TableObject> known) throws SQLException {
+    public static TableObject GetObjectById(Connection sqlCon, String objectType, int id, AbstractList<TableObject> known) throws SQLException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
         TableObject returnValue = null;
         for (TableObject o : known) {
             if (o.GetId() == id) {
@@ -110,7 +115,7 @@ public abstract class TableObject implements TableObjectInterface {
         return returnValue;
     }
     
-    public static TableObject GetUniqueObject(Connection sqlCon, String objectType, String sqlunique, String[] uniquevals, AbstractList<TableObject> known) throws SQLException {
+    public static TableObject GetUniqueObject(Connection sqlCon, String objectType, String sqlunique, String[] uniquevals, AbstractList<TableObject> known) throws SQLException, IllegalAccessException, IllegalArgumentException, InvocationTargetException {
         TableObject returnValue = null;
         for (TableObject o : known) {
             if (o.CheckIsSame(uniquevals)) { // <-- abbruch in dieser Zeile! ist 0 null oder was bescheuertes? uniquevalls ist ok.

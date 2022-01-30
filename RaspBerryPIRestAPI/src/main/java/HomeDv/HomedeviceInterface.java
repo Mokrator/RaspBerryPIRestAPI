@@ -1,6 +1,7 @@
-package Homedv;
+package HomeDv;
 
 import java.net.http.HttpRequest;
+import java.sql.Connection;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -12,7 +13,7 @@ public interface HomedeviceInterface {
     /***
      * Reads config from device (add the addequate number of subdevices, read real hostname for ap-devices [or create one if by ip added new device has no hostname!] )
      */
-    public void ReadConfig();
+    public void ReadConfig(Connection sqlCon);
     
     /***
      * prepare a Request for this devicetype (with auth if needed)
